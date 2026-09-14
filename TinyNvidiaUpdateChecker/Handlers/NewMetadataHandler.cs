@@ -24,6 +24,8 @@ public class DriverVersion
     public string bit { get; set; }
     public string type { get; set; }
     public int dch { get; set; }
+    public string notebook { get; set; }
+    public string variant { get; set; }
     public List<int> supports { get; set; }
 }
 
@@ -46,7 +48,7 @@ public class NewMetadataHandler
         {
             string jsonString = MainConsole.SendGetRequest(MainConsole.experimentalGpuMetadataRepo);
             _combinedGpuData = JsonSerializer.Deserialize<CombinedGpuData>(jsonString, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            return true;
+            return _combinedGpuData?.devices != null && _combinedGpuData.versions != null;
         }
         catch
         {
@@ -56,12 +58,13 @@ public class NewMetadataHandler
 
     public static (GpuDevice matchedGpu, int deviceKey) FindGpuDetailsByDeviceId(string deviceId)
     {
+        if (_combinedGpuData?.devices == null || string.IsNullOrWhiteSpace(deviceId)) return (null, 0);
         foreach (KeyValuePair<string, GpuDevice> entry in _combinedGpuData.devices)
         {
             GpuDevice device = entry.Value;
-            if (device.id.Equals(deviceId, StringComparison.OrdinalIgnoreCase))
+            if (device?.id != null && device.id.Equals(deviceId, StringComparison.OrdinalIgnoreCase) && int.TryParse(entry.Key, out int key))
             {
-                return (device, int.Parse(entry.Key));
+                return (device, key);
             }
         }
         return (null, 0);
@@ -71,16 +74,31 @@ public class NewMetadataHandler
     {
         DriverVersion latestDriver = null;
         Version latestParsedVersion = new(0, 0);
+        DriverVersion latestNotebookDriver = null;
+        Version latestNotebookVersion = new(0, 0);
+        bool preferNotebook = driverType != "sd" && IsMobileGpuIndex(gpuIndex);
 
+        if (_combinedGpuData?.versions == null) return null;
         foreach (var driver in _combinedGpuData.versions)
         {
-            if (driver.supports.Contains(gpuIndex))
+            if (driver?.supports?.Contains(gpuIndex) == true)
             {
-                // Does driver type match?
-                if ((driverType == "sd" && driver.type == "Studio") || driverType != "sd")
+                // Does driver type match? For GRD, prefer notebook variants for mobile GPUs.
+                bool isStudio = string.Equals(driver.type, "Studio", StringComparison.OrdinalIgnoreCase);
+                bool isNotebookVariant = string.Equals(driver.notebook, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(driver.type, "Notebook", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(driver.variant, "notebook", StringComparison.OrdinalIgnoreCase)
+                    || driver.key?.Contains("notebook", StringComparison.OrdinalIgnoreCase) == true;
+
+                if ((driverType == "sd" && isStudio) || (driverType != "sd" && !isStudio))
                 {
                     if (Version.TryParse(driver.version, out Version currentParsedVersion))
                     {
+                        if (preferNotebook && isNotebookVariant && currentParsedVersion > latestNotebookVersion)
+                        {
+                            latestNotebookVersion = currentParsedVersion;
+                            latestNotebookDriver = driver;
+                        }
                         if (currentParsedVersion > latestParsedVersion)
                         {
                             latestParsedVersion = currentParsedVersion;
@@ -90,7 +108,15 @@ public class NewMetadataHandler
                 }
             }
         }
-        return latestDriver;
+        return latestNotebookDriver ?? latestDriver;
+    }
+
+    private static bool IsMobileGpuIndex(int gpuIndex)
+    {
+        return _combinedGpuData?.devices?.TryGetValue(gpuIndex.ToString(), out GpuDevice device) == true
+            && (device.name?.Contains("Laptop", StringComparison.OrdinalIgnoreCase) == true
+                || device.name?.Contains("Notebook", StringComparison.OrdinalIgnoreCase) == true
+                || device.name?.Contains("Max-Q", StringComparison.OrdinalIgnoreCase) == true);
     }
 
     public static (DriverMetadata metadata, string errorCode) GetDriverMetadata(string deviceId, string driverType)
@@ -110,15 +136,15 @@ public class NewMetadataHandler
                 // Query release date and file size
                 using (var request = new HttpRequestMessage(HttpMethod.Head, downloadUrl))
                 {
-                    using var response = MainConsole.httpClient.Send(request);
+                    using var response = MainConsole.SendMetadataRequest(request);
                     response.EnsureSuccessStatusCode();
 
                     // File size
-                    long fileSize = response.Content.Headers.ContentLength.Value;
+                    long fileSize = response.Content.Headers.ContentLength ?? 0;
 
                     // Release date
                     DateTimeOffset? releaseDateOffset = response.Content.Headers.LastModified;
-                    DateTime releaseDate = (DateTime)(releaseDateOffset?.LocalDateTime);
+                    DateTime releaseDate = releaseDateOffset?.LocalDateTime ?? DateTime.MinValue;
 
                     // Test if PDF url is OK
                     if (!IsUrlOk(pdfUrl)) pdfUrl = null;
@@ -151,7 +177,7 @@ public class NewMetadataHandler
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Head, url);
-            using var response = MainConsole.httpClient.Send(request);
+            using var response = MainConsole.SendMetadataRequest(request);
             return response.IsSuccessStatusCode;
         }
         catch

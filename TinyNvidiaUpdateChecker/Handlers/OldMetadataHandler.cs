@@ -1,4 +1,4 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Management;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
 namespace TinyNvidiaUpdateChecker.Handlers
@@ -138,36 +139,47 @@ namespace TinyNvidiaUpdateChecker.Handlers
         }
 
         /// <summary>
-        /// Finds the GPU, the version and queries up to date information
+        /// Detects notebook chassis types, honoring the user's chassis override.
+        /// </summary>
+        public static bool IsNotebookComputer()
+        {
+            int[] notebookChassisTypes = [8, 9, 10, 11, 12, 14, 18, 21, 31, 32];
+            if (MainConsole.overrideChassisType != 0)
+                return notebookChassisTypes.Contains(MainConsole.overrideChassisType);
+            try
+            {
+                using ManagementClass enclosure = new("Win32_SystemEnclosure");
+                var options = new System.Management.EnumerationOptions { Timeout = TimeSpan.FromSeconds(5), ReturnImmediately = true };
+                using ManagementObjectCollection results = enclosure.GetInstances(options);
+                foreach (ManagementBaseObject obj in results)
+                {
+                    using (obj)
+                    {
+                        if (obj["ChassisTypes"] is ushort[] types && types.Any(type => notebookChassisTypes.Contains(type)))
+                            return true;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is ManagementException or COMException or UnauthorizedAccessException)
+            {
+                if (MainConsole.debug) MainConsole.WriteLine("Chassis enumeration unavailable or timed out.");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Finds the GPU, the version and queries up to date information.
         /// </summary>
         public static (GPU, int, bool) GetDriverMetadata(bool forceRecache = false, bool useNewMetadataHandler = false)
         {
-            bool isNotebook = false;
+            bool isNotebook = IsNotebookComputer();
             bool isDchDriver = false; // TODO rewrite for each GPU
             Regex nameRegex = new(@"(?<=NVIDIA )(.*(?= \([A-Z]+\))|.*(?= [0-9]+GB)|.*(?= with Max-Q Design)|.*(?= COLLECTORS EDITION)|.*)");
-            List<int> notebookChassisTypes = [1, 8, 9, 10, 11, 12, 14, 18, 21, 31, 32];
             List<GPU> gpuList = [];
             int osId = 0;
 
             if (!useNewMetadataHandler)
             {
-                // Check for notebook
-                // TODO rewrite and identify GPUs properly
-                if (MainConsole.overrideChassisType == 0)
-                {
-                    foreach (var obj in new ManagementClass("Win32_SystemEnclosure").GetInstances())
-                    {
-                        foreach (int chassisType in obj["ChassisTypes"] as ushort[])
-                        {
-                            isNotebook = notebookChassisTypes.Contains(chassisType);
-                        }
-                    }
-                }
-                else
-                {
-                    isNotebook = notebookChassisTypes.Contains(MainConsole.overrideChassisType);
-                }
-
                 // Get operating system ID
                 OSClassRoot osData = OldMetadataHandler.RetrieveOSData();
                 string osVersion = $"{Environment.OSVersion.Version.Major}.{Environment.OSVersion.Version.Minor}";
@@ -222,16 +234,20 @@ namespace TinyNvidiaUpdateChecker.Handlers
             }
 
             // Scan computer for GPUs
-            foreach (ManagementBaseObject gpu in new ManagementObjectSearcher("SELECT Name, DriverVersion, PNPDeviceID FROM Win32_VideoController").Get())
+            try
             {
-                string rawGpuLabel = gpu["Name"].ToString();
-                string rawVersion = gpu["DriverVersion"].ToString().Replace(".", string.Empty);
-                string pnp = gpu["PNPDeviceID"].ToString();
-
-                // Is it a GPU?
-                if (pnp.Contains("&DEV_"))
+                var options = new System.Management.EnumerationOptions { Timeout = TimeSpan.FromSeconds(8), ReturnImmediately = true };
+                using ManagementObjectSearcher gpuSearcher = new("root\\CIMV2", "SELECT Name, DriverVersion, PNPDeviceID FROM Win32_VideoController", options);
+                using ManagementObjectCollection results = gpuSearcher.Get();
+                foreach (ManagementBaseObject result in results)
                 {
+                    using ManagementBaseObject gpu = result;
+                    string rawGpuLabel = gpu["Name"]?.ToString() ?? string.Empty;
+                    string rawVersion = (gpu["DriverVersion"]?.ToString() ?? string.Empty).Replace(".", string.Empty);
+                    string pnp = gpu["PNPDeviceID"]?.ToString() ?? string.Empty;
+                    if (!pnp.Contains("&DEV_")) continue;
                     string[] split = pnp.Split("&DEV_");
+                    if (split[0].Length < 4 || split[1].Length < 4) continue;
                     string vendorId = split[0][^4..].ToLower();
                     string deviceId = split[1][..4];
 
@@ -239,7 +255,7 @@ namespace TinyNvidiaUpdateChecker.Handlers
                     if (Regex.IsMatch(rawGpuLabel, @"^NVIDIA") && nameRegex.IsMatch(rawGpuLabel))
                     {
                         string gpuLabel = nameRegex.Match(rawGpuLabel).Value.Trim().Replace("Super", "SUPER");
-                        string cleanVersion = rawVersion.Substring(rawVersion.Length - 5, 5).Insert(3, ".");
+                        string cleanVersion = rawVersion.Length >= 5 ? rawVersion[^5..].Insert(3, ".") : "000.00";
 
                         gpuList.Add(new GPU(gpuLabel, cleanVersion, vendorId, deviceId, true, isNotebook, isDchDriver));
                     }
@@ -265,6 +281,10 @@ namespace TinyNvidiaUpdateChecker.Handlers
                         }
                     }
                 }
+            }
+            catch (Exception ex) when (ex is ManagementException or COMException or UnauthorizedAccessException)
+            {
+                MainConsole.WriteLine("GPU enumeration unavailable or timed out; using any devices already detected.");
             }
 
             // If NewMetadataHandler mode is enabled, then skip ZenitH-AT GetGpuIdFromName code
@@ -347,26 +367,26 @@ namespace TinyNvidiaUpdateChecker.Handlers
             }
             else
             {
-                MainConsole.Write("ERROR!");
-                MainConsole.WriteLine();
+                if (useNewMetadataHandler)
+                {
+                    GPU detectedGpu = gpuList.FirstOrDefault(x => x.vendorId.Equals("10de", StringComparison.OrdinalIgnoreCase));
+                    if (detectedGpu != null)
+                    {
+                        return (detectedGpu, osId, true);
+                    }
+                }
 
                 if (!gpuList.Any(x => x.vendorId == "10de"))
                 {
+                    MainConsole.Write("ERROR!");
+                    MainConsole.WriteLine();
                     MainConsole.WriteLine("No NVIDIA GPU was detected on this system.");
                     MainConsole.WriteLine();
                 }
-                else
+                else if (MainConsole.debug)
                 {
-                    MainConsole.WriteLine("GPU metadata lookup using OldMetadataHandler failed!");
                     MainConsole.WriteLine();
-                    MainConsole.WriteLine("Found GPUs:");
-
-                    foreach (GPU gpu in gpuList)
-                    {
-                        MainConsole.WriteLine($"GPU Name: '{gpu.name}' | VendorId: {gpu.vendorId} | DeviceId: {gpu.deviceId} | IsNotebook: {gpu.isNotebook}");
-                    }
-
-                    MainConsole.WriteLine();
+                    MainConsole.WriteLine("Legacy GPU metadata lookup did not match; falling back to modern metadata handler.");
                 }
 
                 // Return success false state

@@ -10,6 +10,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Xml;
@@ -121,7 +122,14 @@ namespace TinyNvidiaUpdateChecker
         /// </summary>
         private static bool hasRunIntro = false;
 
-        public static HttpClient httpClient = new();
+        public static HttpClient httpClient = CreateHttpClient();
+
+        private static HttpClient CreateHttpClient()
+        {
+            HttpClient client = new() { Timeout = Timeout.InfiniteTimeSpan };
+            client.DefaultRequestHeaders.UserAgent.TryParseAdd("TinyNvidiaUpdateChecker/8.0");
+            return client;
+        }
 
         [DllImport("kernel32.dll", SetLastError = true)]
         static extern bool AllocConsole();
@@ -197,7 +205,22 @@ namespace TinyNvidiaUpdateChecker
             string useExperimental = ConfigurationHandler.ReadSetting("Use Experimental Metadata", null, false);
 
             if (useExperimental == "true") {
+                WriteLine();
+                Write("Detecting NVIDIA GPU for modern metadata service . . . ");
                 (gpu, osId, bool success) = OldMetadataHandler.GetDriverMetadata(false, true);
+                if (success && gpu != null && !string.IsNullOrWhiteSpace(gpu.deviceId))
+                {
+                    WriteLine("OK!");
+                }
+                else
+                {
+                    WriteLine("not available.");
+                    WriteLine("Modern metadata lookup requires a device identifier from the GPU enumeration.");
+                    WriteLine("No usable NVIDIA device ID was detected. The GPU may be disabled or sleeping in hybrid mode.");
+                    callExit(1);
+                    return;
+                }
+
                 (metadata, string error) = NewMetadataHandler.GetDriverMetadata(gpu.deviceId, driverType);
 
                 if (metadata == null) {
@@ -262,9 +285,9 @@ namespace TinyNvidiaUpdateChecker
                     // Get file size in bytes
                     using (var request = new HttpRequestMessage(HttpMethod.Head, metadata.downloadUrl))
                     {
-                        using var response = httpClient.Send(request);
+                        using var response = SendMetadataRequest(request);
                         response.EnsureSuccessStatusCode();
-                        metadata.fileSize = response.Content.Headers.ContentLength.Value;
+                        metadata.fileSize = response.Content.Headers.ContentLength ?? 0;
                     }
 
                     // Get PDF release notes
@@ -352,6 +375,13 @@ namespace TinyNvidiaUpdateChecker
         // Local driver install flow
         private static void localDriverInstall()
         {
+            if (!PowerHandler.ConfirmHeavyOperation("install an NVIDIA driver"))
+            {
+                WriteLine("Operation canceled. Connect AC power and try again.");
+                callExit(1);
+                return;
+            }
+
             bool fileExists = localDriverPath != null && File.Exists(localDriverPath);
             string selectedFilePath = null;
 
@@ -468,6 +498,7 @@ namespace TinyNvidiaUpdateChecker
                     RunIntro();
                     WriteLine($"Current version is {offlineVer}");
                     WriteLine();
+                    Environment.Exit(0);
                 }
 
                 // automaticly download driver
@@ -642,12 +673,19 @@ namespace TinyNvidiaUpdateChecker
         public static string SendGetRequest(string url)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            using var response = httpClient.Send(request);
+            using var response = SendMetadataRequest(request);
             response.EnsureSuccessStatusCode();
 
             using var stream = response.Content.ReadAsStream();
             using var reader = new StreamReader(stream);
             return reader.ReadToEnd();
+        }
+
+        public static HttpResponseMessage SendMetadataRequest(HttpRequestMessage request)
+        {
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(15));
+            // Buffer the body within the deadline, not just the response headers.
+            return httpClient.Send(request, HttpCompletionOption.ResponseContentRead, timeout.Token);
         }
 
         /// <summary>
@@ -788,6 +826,12 @@ namespace TinyNvidiaUpdateChecker
         /// </summary>
         private static void DownloadDriverQuiet(bool minimized, DriverMetadata metadata, string overrideDownloadLocation = null, bool keepDriver = false)
         {
+            if (!PowerHandler.ConfirmHeavyOperation("download or install an NVIDIA driver"))
+            {
+                WriteLine("Operation canceled. Connect AC power and try again.");
+                return;
+            }
+
             string driverFileName = metadata.downloadUrl.Split('/').Last(); // retrives file name from url
             string savePath = overrideDownloadLocation ?? Path.GetTempPath();
 
@@ -876,11 +920,11 @@ namespace TinyNvidiaUpdateChecker
             }
 
             try {
-                using (FileStream file = new(path, FileMode.Create, FileAccess.Write, FileShare.None))  {
+                using (FileStream file = new(path, FileMode.Create, FileAccess.Write, FileShare.ReadWrite, 1048576, useAsync: true))  {
                     await httpClient.DownloadDataAsync(url, file, progress);
                 }
 
-                File.Move(path, path[..^5]); // rename back
+                File.Move(path, path[..^5], true); // rename back
                 if (progressHandle == null ) { progressBar.Dispose(); }
             } catch {
                 File.Delete(path);
@@ -1090,7 +1134,17 @@ namespace TinyNvidiaUpdateChecker
                 WriteLine("Press any key to exit...");
             }
 
-            if (showUI & !noPrompt) Console.ReadKey(true);
+            if (showUI && !noPrompt && !Console.IsInputRedirected && Environment.UserInteractive)
+            {
+                try
+                {
+                    Console.ReadKey(true);
+                }
+                catch (InvalidOperationException)
+                {
+                    // Console input may become unavailable after redirection or detachment.
+                }
+            }
             FreeConsole();
             Environment.Exit(exitNum);
         }
