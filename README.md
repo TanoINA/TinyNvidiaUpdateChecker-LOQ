@@ -7,6 +7,7 @@ The best and __most popular__ open-sourced utility to check for NVIDIA GPU updat
 Made by Windows power users, for Windows power users.
 
 - [Join the community Discord](https://discord.gg/CSckkRu9Y5)
+- [Upstream](https://github.com/HawaiiBeach/TinyNvidiaUpdateChecker)
 
 ## Main features
 
@@ -25,6 +26,16 @@ Some even require admin permissions to run (!!).
 Stops the NVIDIA spyware from being installed on your computer. You choose EXACTLY which components of the driver you actually want to install.
 
 No bloatware gets installed.
+
+## Changes in this fork
+
+- **Multi-connection segmented downloader**: Uses up to 6 parallel range streams with 1 MiB buffers to bypass CDN single-stream throttling and sustain full network download speed.
+- **Newer GPU detection & fallback**: Cleanly falls back to modern metadata when device IDs (such as RTX 50-series / `DEV_2DD8`) are not yet present in legacy community data.
+- **Optimus / hybrid GPU compatibility**: Added bounded WMI timeouts and null safety to prevent hangs when the dGPU is sleeping in D3Cold.
+- **Battery & power safety**: Warns when operating on battery and blocks unattended driver installs when battery is low (≤15%).
+- **Laptop-safe minimal install**: Preserves `NVPCF` (Dynamic Boost) and `PPC` (USB-C DisplayPort Alt Mode) by default.
+- **CLI & terminal fixes**: Exits cleanly on `--version` and guards `Console.ReadKey` against hangs in non-interactive/redirected shells.
+- **Single-file portable build**: Includes official publish profiles producing a standalone ~3.2 MB executable.
 
 ## Dependencies
 
