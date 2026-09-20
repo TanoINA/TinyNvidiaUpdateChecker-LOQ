@@ -13,6 +13,7 @@ namespace TinyNvidiaUpdateChecker
         bool downloadFinished;
 
         public Exception Error { get; private set; }
+        public bool IsCancelledByUser { get; private set; }
 
         public DownloaderForm(string downloadURL, string savePath)
         {
@@ -56,6 +57,7 @@ namespace TinyNvidiaUpdateChecker
             base.OnFormClosing(e);
             if (downloadCancellation != null && !downloadFinished)
             {
+                IsCancelledByUser = true;
                 e.Cancel = true;
                 downloadCancellation.Cancel();
             }

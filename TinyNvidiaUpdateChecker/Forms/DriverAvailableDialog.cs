@@ -211,15 +211,6 @@ namespace TinyNvidiaUpdateChecker
             // NOTE: Experimental metadata doesn't support individual release notes
             if (updateReleaseNotes)
             {
-                if (webBrowser1.Document == null)
-                {
-                    webBrowser1.Navigate("about:blank");
-                    while (webBrowser1.ReadyState != WebBrowserReadyState.Complete)
-                    {
-                        Application.DoEvents();
-                    }
-                }
-
                 // Smaller font size for high DPI displays
                 string fontSize = DeviceDpi > 96 ? "8pt" : "10pt";
 
@@ -231,17 +222,14 @@ namespace TinyNvidiaUpdateChecker
                     </body>
                 </html>";
 
-                // Set new release notes
-                webBrowser1.Document.OpenNew(true);
-                webBrowser1.Document.Write(styledHtml);
-                webBrowser1.Refresh();
+                webBrowser1.DocumentText = styledHtml;
             }
 
             // Don't update release notes if relying on global releaseNotes (applies to experimental metadata)
             if (selectedDriver.releaseNotes == null && updateReleaseNotes)
                 updateReleaseNotes = false;
 
-            toolTip1.SetToolTip(releasedLabel, selectedDriver.releaseDate.ToShortDateString());
+            toolTip1.SetToolTip(releasedLabel, selectedDriver.releaseDate == DateTime.MinValue ? "unknown" : selectedDriver.releaseDate.ToShortDateString());
             releasedLabel.Text = $"Released: {releasedLabelStr}";
 
             versionLabel.Text = $"Version: {selectedDriver.version} (you're on {MainConsole.OfflineGPUVersion})";

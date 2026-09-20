@@ -334,7 +334,7 @@ namespace TinyNvidiaUpdateChecker
 
             // Show installer
             string fileName = minimalInstaller ? FULL_PATH_DIRECTORY + "setup.exe" : FULL_PATH_DRIVER;
-            ReadyInstallForm.handleInstall(fileName, tempFiles);
+            ReadyInstallForm.handleInstall(fileName, tempFiles, keepDriver: true);
 
             CallExit(0);
         }
@@ -579,6 +579,7 @@ namespace TinyNvidiaUpdateChecker
                     else if (!showUI && !File.Exists(finalPath)) {
                         using var dlForm = new DownloaderForm(selectedVersion.downloadUrl, finalPath);
                         dlForm.ShowDialog();
+                        if (dlForm.IsCancelledByUser) CallExit(0);
                         if (dlForm.Error != null) throw dlForm.Error;
                     }
 
@@ -689,6 +690,7 @@ namespace TinyNvidiaUpdateChecker
                 } else {
                     using var dlForm = new DownloaderForm(nvidiaDriver.downloadUrl, FULL_PATH_DRIVER);
                     dlForm.ShowDialog();
+                    if (dlForm.IsCancelledByUser) CallExit(0);
                     if (dlForm.Error != null) throw dlForm.Error;
                 }
             }
@@ -776,6 +778,11 @@ namespace TinyNvidiaUpdateChecker
             try
             {
                 return MakeInstallerCore(silent, savePath, fileName);
+            }
+            catch (OperationCanceledException)
+            {
+                CallExit(0);
+                return null;
             }
             catch (Exception ex)
             {

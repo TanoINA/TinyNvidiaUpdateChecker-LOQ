@@ -71,6 +71,9 @@ namespace TinyNvidiaUpdateChecker.Forms
 
             ShowDialog();
 
+            if (chosenComponents.Count == 0)
+                throw new OperationCanceledException("Component selection was cancelled.");
+
             if (!chosenComponents.Contains("Display.Driver"))
                 throw new OperationCanceledException("Component selection is missing Display.Driver");
 

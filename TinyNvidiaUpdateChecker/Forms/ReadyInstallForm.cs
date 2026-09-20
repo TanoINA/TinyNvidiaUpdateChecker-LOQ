@@ -51,8 +51,14 @@ namespace TinyNvidiaUpdateChecker.Forms
                         ?? throw new InvalidOperationException("The installer could not be started");
 
                     installer.WaitForExit();
-                    if (installer.ExitCode != 0)
-                        throw new InvalidOperationException($"The installer exited with code {installer.ExitCode}");
+                    if (installer.ExitCode == 3010)
+                    {
+                        ConsoleHelper.WriteLine($"Note: installer returned {installer.ExitCode} (a reboot is required).");
+                    }
+                    else if (installer.ExitCode != 0)
+                    {
+                        throw new InvalidOperationException($"The installer exited with code {installer.ExitCode}.");
+                    }
 
                     ConsoleHelper.Write("OK!");
                 }
@@ -125,7 +131,7 @@ namespace TinyNvidiaUpdateChecker.Forms
             }
         }
 
-        private void runBtn_Click(object sender, EventArgs e)
+        private async void runBtn_Click(object sender, EventArgs e)
         {
             Enabled = false;
             deleteBtn.Enabled = false;
@@ -143,9 +149,15 @@ namespace TinyNvidiaUpdateChecker.Forms
 
                 using Process installer = Process.Start(startInfo)
                     ?? throw new InvalidOperationException("The installer could not be started.");
-                installer.WaitForExit();
-                if (installer.ExitCode != 0)
+                await installer.WaitForExitAsync();
+                if (installer.ExitCode == 3010)
+                {
+                    ConsoleHelper.WriteLine($"Note: installer returned {installer.ExitCode} (a reboot is required).");
+                }
+                else if (installer.ExitCode != 0)
+                {
                     throw new InvalidOperationException($"The installer exited with code {installer.ExitCode}.");
+                }
 
                 hasRunInstaller = true;
                 ConsoleHelper.Write("OK!");
