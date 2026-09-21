@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) 
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.29.1] - 2026-09-21
+### Fixed
+- Prevented recursive deletion of user directory when running local driver install (`--driver-path` + `--confirm-dl`)
+- Replaced blocking `DoEvents()` loop in WebBrowser release notes with native `DocumentText`
+- Closing component selection window now cleanly cancels instead of falling back to full installer
+- Network timeout during download is now properly reported as an error instead of clean exit
+- Installer exit codes now accurately distinguish between success (0), reboot required (3010), and fatal errors
+- Installer run button in ReadyInstallForm now awaits asynchronously, preventing UI freeze ("Not Responding")
+- Fallback release date tooltip to "unknown" when metadata release date is missing
+
 ## [1.29.0] - 2026-09-20
 ### Added
 - Individual driver release notes (does not apply to experimental metadata)

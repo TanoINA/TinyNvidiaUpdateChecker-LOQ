@@ -10,9 +10,18 @@ Made by Windows power users, for Windows power users.
 
 ## Installation
 
-1. [Download the latest version](https://github.com/HawaiiBeach/TinyNvidiaUpdateChecker/releases)
+1. [Download the latest version (LOQ Edition)](https://github.com/TanoINA/TinyNvidiaUpdateChecker-LOQ/releases) or [Upstream releases](https://github.com/HawaiiBeach/TinyNvidiaUpdateChecker/releases)
 2. Start TinyNvidiaUpdateChecker.exe
 3. (Optional) Configure [execute when logging in](https://github.com/HawaiiBeach/TinyNvidiaUpdateChecker/wiki/Quiet-runs-on-user-login)
+
+### LOQ Edition Enhancements
+This fork includes all upstream v1.29.0 features plus dedicated stability enhancements:
+- **Data Loss Prevention:** Prevents accidental directory deletion during local driver installs.
+- **Responsive UI:** Asynchronous installer execution without "(Not Responding)" window freezes.
+- **Smooth Release Notes:** Native, non-blocking HTML release notes rendering.
+- **Clean Cancellation:** Window close [X] cleanly aborts operations without accidental full installs.
+- **Accurate Exit Codes:** Distinguishes normal success, reboot required (3010), and fatal errors.
+- **Laptop & LOQ Optimizations:** Battery checks, mobile driver filtering, and power component preservation.
 
 ## Dependencies
 
