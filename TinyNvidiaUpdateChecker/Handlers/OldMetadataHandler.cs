@@ -158,7 +158,7 @@ namespace TinyNvidiaUpdateChecker.Handlers
 
                 NvidiaDriver driverObj = new()
                 {
-                    title = $"{version} - Type: {driverTypeLabel}",
+                    title = $"{version} - {driverTypeLabel}",
                     version = version,
                     type = driverTypeKey,
                     typeLabel = driverTypeLabel,

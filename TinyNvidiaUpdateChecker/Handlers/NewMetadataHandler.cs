@@ -128,7 +128,7 @@ public class NewMetadataHandler
 
                 NvidiaDriver driverObj = new()
                 {
-                    title = $"{driver.version} - Type: {driverTypeLabel}",
+                    title = $"{driver.version} - {driverTypeLabel}",
                     version = driver.version,
                     type = driverTypeKey,
                     typeLabel = driverTypeLabel,

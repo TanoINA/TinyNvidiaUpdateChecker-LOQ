@@ -57,12 +57,17 @@ Stops the NVIDIA spyware from being installed on your computer. You choose EXACT
 
 Provides an optional list of older compatible versions. Easily downgrade when facing bugs, or switch between Game Ready Drivers (GRD) and Studio (SD) drivers.
 
+### One-click autorun on login
+
+Check for driver updates in the background on user login with one click in the **Configuration Menu**.
+
 ## How to use
 
 Be sure to [check out the wiki](https://github.com/HawaiiBeach/TinyNvidiaUpdateChecker/wiki) to learn more about how to use TNUC.
 
 ## Notable credits
-- [TanoINA](https://github.com/TanoINA) for fixing 10+ deep bugs
+- [SignPath](https://signpath.io/) for providing secure code signing
+- [TanoINA](https://github.com/TanoINA) for fixing 10+ popular bugs I never figured out
 - [ZenitH-AT](https://github.com/ZenitH-AT) for GPU metadata repo
 - PowerTechUp for experimental GPU metadata repo
 
