@@ -151,11 +151,26 @@ namespace TinyNvidiaUpdateChecker
 
         private async void VersionBoxChangedIndex()
         {
+            try
+            {
+                await UpdateSelectedDriver();
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.WriteLine($"Driver selection update failed: {ex.Message}");
+            }
+        }
+
+        private async Task UpdateSelectedDriver()
+        {
             // Find selected driver based on uiIdx
             selectedDriver = nvidiaDrivers.Find(x => x.uiIdx == versionBox.SelectedIndex);
             if (selectedDriver == null) return;
 
             NvidiaDriver driver = selectedDriver;
+            bool hasDownload = !string.IsNullOrWhiteSpace(driver.downloadUrl);
+            DownloadBtn.Enabled = hasDownload;
+            DownloadInstallButton.Enabled = hasDownload;
 
             // If selected driver is missing release date & file size (caused by experimental metadata)
             if (selectedDriver.releaseDate == DateTime.MinValue)

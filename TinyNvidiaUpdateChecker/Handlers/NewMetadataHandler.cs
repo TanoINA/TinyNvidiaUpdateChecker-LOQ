@@ -61,38 +61,56 @@ public class NewMetadataHandler
         }
     }
 
-    public static (GpuDevice matchedGpu, int deviceKey) FindGpuDetailsByDeviceId(string deviceId)
+    public static (GpuDevice matchedGpu, int deviceKey) FindGpuDetailsByDeviceId(string deviceId, bool? isNotebook = null)
     {
         if (_combinedGpuData?.devices == null || string.IsNullOrWhiteSpace(deviceId)) return (null, 0);
 
+        GpuDevice fallbackGpu = null;
+        int fallbackKey = 0;
+
+        // Mobile and desktop GPUs can share a PCI device ID.
         foreach (KeyValuePair<string, GpuDevice> entry in _combinedGpuData.devices)
         {
             GpuDevice device = entry.Value;
             if (device?.id != null && device.id.Equals(deviceId, StringComparison.OrdinalIgnoreCase) && int.TryParse(entry.Key, out int key))
             {
-                return (device, key);
+                if (isNotebook == null || IsMobileGpu(device) == isNotebook.Value)
+                {
+                    return (device, key);
+                }
+
+                if (fallbackGpu == null)
+                {
+                    fallbackGpu = device;
+                    fallbackKey = key;
+                }
             }
         }
-        return (null, 0);
+        return (fallbackGpu, fallbackKey);
     }
 
-    private static bool IsMobileGpuIndex(int gpuIndex)
+    private static bool IsMobileGpu(GpuDevice device)
     {
-        return _combinedGpuData?.devices?.TryGetValue(gpuIndex.ToString(), out GpuDevice device) == true
-            && device != null
+        return device != null
             && (device.name?.Contains("Laptop", StringComparison.OrdinalIgnoreCase) == true
                 || device.name?.Contains("Notebook", StringComparison.OrdinalIgnoreCase) == true
                 || device.name?.Contains("Max-Q", StringComparison.OrdinalIgnoreCase) == true);
     }
 
-    public static List<NvidiaDriver> FindDriversForGpu(int gpuIndex, string driverType)
+    private static bool IsMobileGpuIndex(int gpuIndex)
+    {
+        return _combinedGpuData?.devices?.TryGetValue(gpuIndex.ToString(), out GpuDevice device) == true
+            && IsMobileGpu(device);
+    }
+
+    public static List<NvidiaDriver> FindDriversForGpu(int gpuIndex, string driverType, bool? isNotebook = null)
     {
         List<NvidiaDriver> nvidiaDrivers = new();
         NvidiaDriver latestDriver = null;
         NvidiaDriver latestNotebookDriver = null;
         Version latestParsedVersion = new(0, 0);
         Version latestNotebookVersion = new(0, 0);
-        bool isMobileGpu = IsMobileGpuIndex(gpuIndex);
+        bool isMobileGpu = isNotebook ?? IsMobileGpuIndex(gpuIndex);
         bool preferNotebook = isMobileGpu;
 
         if (_combinedGpuData?.versions == null) return nvidiaDrivers;
@@ -193,15 +211,15 @@ public class NewMetadataHandler
         }
     }
 
-    public static (List<NvidiaDriver> nvidiaDrivers, string errorCode, string releaseNotes) GetDriverMetadata(string deviceId, string driverType)
+    public static (List<NvidiaDriver> nvidiaDrivers, string errorCode, string releaseNotes) GetDriverMetadata(string deviceId, string driverType, bool? isNotebook = null)
     {
         if (!LoadCombinedJsonData()) return (null, "Error parsing GPU metadata json.", null);
-        (GpuDevice matchedGpu, int gpuIndex) = FindGpuDetailsByDeviceId(deviceId);
+        (GpuDevice matchedGpu, int gpuIndex) = FindGpuDetailsByDeviceId(deviceId, isNotebook);
 
         if (matchedGpu != null)
         {
             // Finds all compatible drivers for GPU from metadata
-            List<NvidiaDriver> nvidiaDrivers = FindDriversForGpu(gpuIndex, driverType);
+            List<NvidiaDriver> nvidiaDrivers = FindDriversForGpu(gpuIndex, driverType, isNotebook);
 
             if (nvidiaDrivers.Count > 0)
             {

@@ -16,6 +16,8 @@ namespace TinyNvidiaUpdateChecker.Forms
         bool hasRunInstaller = false;
         bool isInstallerRunning = false;
 
+        public int InstallerExitCode { get; private set; }
+
         public ReadyInstallForm(string driverPath, List<string> tempFiles)
         {
             this.driverPath = driverPath;
@@ -25,12 +27,15 @@ namespace TinyNvidiaUpdateChecker.Forms
             InitializeComponent();
         }
 
-        public static void handleInstall(string driverPath, List<string> tempFiles, bool keepDriver = false)
+        public static int handleInstall(string driverPath, List<string> tempFiles, bool keepDriver = false)
         {
+            int exitCode;
+
             if (!MainConsole.confirmDL)
             {
                 using ReadyInstallForm form = new(driverPath, tempFiles);
                 form.ShowDialog();
+                exitCode = form.InstallerExitCode;
             }
             else
             {
@@ -60,13 +65,14 @@ namespace TinyNvidiaUpdateChecker.Forms
                         throw new InvalidOperationException($"The installer exited with code {installer.ExitCode}.");
                     }
 
+                    exitCode = installer.ExitCode;
                     ConsoleHelper.Write("OK!");
                 }
                 catch (Exception ex)
                 {
                     ConsoleHelper.WriteLine($"Installation failed: {ex.Message}");
                     ConsoleHelper.WriteLine();
-                    MainConsole.CallExit(1);
+                    return 1;
                 }
 
                 ConsoleHelper.WriteLine();
@@ -75,18 +81,18 @@ namespace TinyNvidiaUpdateChecker.Forms
 
                 if (!keepDriver)
                 {
-                    try
+                    if (FileSystemHandler.DeleteTemporaryFiles(folderPath, tempFiles))
                     {
-                        Directory.Delete(folderPath, true);
                         ConsoleHelper.WriteLine($"Cleaned up: {folderPath}");
                     }
-                    catch
+                    else
                     {
                         ConsoleHelper.WriteLine($"Could not cleanup: {folderPath}");
                     }
                 }
             }
 
+            return exitCode;
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -100,7 +106,7 @@ namespace TinyNvidiaUpdateChecker.Forms
                 return;
             }
 
-            if (!hasDeletedTempFiles && Directory.Exists(folderPath))
+            if (!hasDeletedTempFiles && tempFiles.Count > 0 && Directory.Exists(folderPath))
             {
                 string message = "Temporary driver files have not been deleted. Do you want to delete them before closing?";
 
@@ -150,15 +156,17 @@ namespace TinyNvidiaUpdateChecker.Forms
                 using Process installer = Process.Start(startInfo)
                     ?? throw new InvalidOperationException("The installer could not be started.");
                 await installer.WaitForExitAsync();
-                if (installer.ExitCode == 3010)
+                int exitCode = installer.ExitCode;
+                if (exitCode == 3010)
                 {
-                    ConsoleHelper.WriteLine($"Note: installer returned {installer.ExitCode} (a reboot is required).");
+                    ConsoleHelper.WriteLine($"Note: installer returned {exitCode} (a reboot is required).");
                 }
-                else if (installer.ExitCode != 0)
+                else if (exitCode != 0)
                 {
-                    throw new InvalidOperationException($"The installer exited with code {installer.ExitCode}.");
+                    throw new InvalidOperationException($"The installer exited with code {exitCode}.");
                 }
 
+                InstallerExitCode = exitCode;
                 hasRunInstaller = true;
                 ConsoleHelper.Write("OK!");
                 ConsoleHelper.WriteLine();
@@ -167,15 +175,17 @@ namespace TinyNvidiaUpdateChecker.Forms
             }
             catch (Exception ex)
             {
+                InstallerExitCode = 1;
                 MessageBox.Show($"Installation failed: {ex.Message}", "TinyNvidiaUpdateChecker", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 ConsoleHelper.Write("ERROR!");
                 ConsoleHelper.WriteLine();
+                ConsoleHelper.WriteLine($"Installation failed: {ex.Message}");
             }
             finally
             {
                 isInstallerRunning = false;
                 Enabled = true;
-                deleteBtn.Enabled = true;
+                deleteBtn.Enabled = tempFiles.Count > 0 && !hasDeletedTempFiles;
             }
         }
 
@@ -213,34 +223,7 @@ namespace TinyNvidiaUpdateChecker.Forms
         // Delete temporary files, and the parent folder if it is empty
         private bool deleteTempFiles()
         {
-            try
-            {
-                foreach (string entry in tempFiles)
-                {
-                    string path = Path.Combine(folderPath, entry);
-
-                    if (File.Exists(path))
-                    {
-                        File.Delete(path);
-                    }
-                    else if (Directory.Exists(path))
-                    {
-                        Directory.Delete(path, true);
-                    }
-                }
-
-                // If directory is empty after deleting tempFiles, delete it as well
-                if (Directory.GetFiles(folderPath).Length == 0 && Directory.GetDirectories(folderPath).Length == 0)
-                {
-                    Directory.Delete(folderPath);
-                }
-
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
+            return FileSystemHandler.DeleteTemporaryFiles(folderPath, tempFiles);
         }
 
         private void ReadyInstallForm_Load(object sender, EventArgs e)

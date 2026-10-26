@@ -39,6 +39,10 @@ namespace TinyNvidiaUpdateChecker
                     savePath,
                     (s, value) => ((IProgress<float>)progress).Report(value), downloadCancellation.Token));
             }
+            catch (OperationCanceledException) when (downloadCancellation.IsCancellationRequested)
+            {
+                IsCancelledByUser = true;
+            }
             catch (Exception ex)
             {
                 Error = ex;
@@ -48,7 +52,7 @@ namespace TinyNvidiaUpdateChecker
                 downloadFinished = true;
                 downloadCancellation.Dispose();
                 downloadCancellation = null;
-                Close();
+                if (!IsDisposed) Close();
             }
         }
 

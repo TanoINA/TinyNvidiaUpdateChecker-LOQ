@@ -234,7 +234,7 @@ namespace TinyNvidiaUpdateChecker
             {
                 if (useExperimental)
                 {
-                    (nvidiaDrivers, error, releaseNotes) = NewMetadataHandler.GetDriverMetadata(gpu.deviceId, driverType);
+                    (nvidiaDrivers, error, releaseNotes) = NewMetadataHandler.GetDriverMetadata(gpu.deviceId, driverType, gpu.isNotebook);
                 }
                 else
                 {
@@ -315,7 +315,7 @@ namespace TinyNvidiaUpdateChecker
             string FULL_PATH_DRIVER = FULL_PATH_DIRECTORY + driverFileName;
 
             bool minimalInstaller = ConfigurationHandler.ReadSettingBool("Minimal install");
-            List<string> tempFiles = [driverFileName];
+            List<string> tempFiles = [];
 
             if (minimalInstaller) {
                 bool minimized = false; // forced off for now
@@ -334,9 +334,7 @@ namespace TinyNvidiaUpdateChecker
 
             // Show installer
             string fileName = minimalInstaller ? FULL_PATH_DIRECTORY + "setup.exe" : FULL_PATH_DRIVER;
-            ReadyInstallForm.handleInstall(fileName, tempFiles, keepDriver: true);
-
-            CallExit(0);
+            CallExit(ReadyInstallForm.handleInstall(fileName, tempFiles, keepDriver: true));
         }
 
         /// <summary>
@@ -420,7 +418,8 @@ namespace TinyNvidiaUpdateChecker
 
                 // delete old file
                 else if (arg.ToLower() == "--cleanup-update") {
-                    File.Delete(Path.GetFullPath(Environment.ProcessPath) + ".old");
+                    try { FileSystemHandler.DeleteWithRetry(Path.GetFullPath(Environment.ProcessPath) + ".old"); }
+                    catch { }
                 }
 
                 // help menu
@@ -572,7 +571,7 @@ namespace TinyNvidiaUpdateChecker
                     ConsoleHelper.WriteLine();
                     ConsoleHelper.Write("Downloading the driver . . . ");
                     if (showUI && !File.Exists(finalPath)) {
-                        HandleDownload(selectedVersion.downloadUrl, finalPath).GetAwaiter().GetResult();
+                        Task.Run(() => HandleDownload(selectedVersion.downloadUrl, finalPath)).GetAwaiter().GetResult();
                     }
 
                     // show progress bar gui if quiet
@@ -607,7 +606,7 @@ namespace TinyNvidiaUpdateChecker
                     if (MakeInstaller(false, savePath, driverFileName) == null)
                     {
                         string driverPath = Path.Combine(savePath, driverFileName);
-                        ReadyInstallForm.handleInstall(driverPath, [driverFileName], true);
+                        CallExit(ReadyInstallForm.handleInstall(driverPath, [driverFileName], true));
                     }
                 }
             } else if (selectedBtn == DriverAvailableDialog.SelectedBtn.DLINSTALL) {
@@ -676,7 +675,7 @@ namespace TinyNvidiaUpdateChecker
 
                 if (showUI || confirmDL) {
                     try {
-                        HandleDownload(nvidiaDriver.downloadUrl, FULL_PATH_DRIVER).GetAwaiter().GetResult();
+                        Task.Run(() => HandleDownload(nvidiaDriver.downloadUrl, FULL_PATH_DRIVER)).GetAwaiter().GetResult();
 
                         ConsoleHelper.Write("OK!");
                         ConsoleHelper.WriteLine();
@@ -714,7 +713,7 @@ namespace TinyNvidiaUpdateChecker
             string fileName = minimalInstaller ? FULL_PATH_DIRECTORY + "setup.exe" : FULL_PATH_DRIVER;
 
             // Handle driver install
-            ReadyInstallForm.handleInstall(fileName, tempFiles, keepDriver);
+            CallExit(ReadyInstallForm.handleInstall(fileName, tempFiles, keepDriver));
         }
 
         /// <summary>
@@ -940,9 +939,6 @@ namespace TinyNvidiaUpdateChecker
                     }
                 }
 
-                if (Directory.Exists(extractedPath))
-                    Directory.Delete(extractedPath, true);
-
                 // Remove new EULA files from the installer config, or else the installer throws error codes
                 // author https://github.com/cywq
                 var xmlDocument = new XmlDocument();
@@ -989,7 +985,7 @@ namespace TinyNvidiaUpdateChecker
                 // The stale-folder guard runs before this scope: never remove pre-existing content.
                 try
                 {
-                    if (Directory.Exists(extractedPath)) Directory.Delete(extractedPath, true);
+                    FileSystemHandler.DeleteWithRetry(extractedPath, true);
                 }
                 catch (Exception ex)
                 {
