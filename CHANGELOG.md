@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) 
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [1.29.2] - 2026-10-26
+### Fixed
+- Added shared cleanup retry handling for transient antivirus and file locks (FileSystemHandler)
+- Scoped unattended cleanup strictly to tracked temporary entries, preserving untracked user files
+- Propagated installer exit codes accurately across both interactive and unattended modes
+- Prevented WinForms dispatcher crash on driver selection update failure
+- Disabled download actions in driver available dialog when download URL metadata is missing
+- Fixed console progress reporting being blocked by WinForms synchronization context
+- Added chassis-aware experimental metadata selection for GPUs sharing desktop and notebook PCI IDs
+
+### Changed
+- Merged upstream changes including cleaner driver title formatting (removed redundant 'Type: ' label)
+
 ## [1.29.1] - 2026-09-21
 ### Fixed
 - Prevented recursive deletion of user directory when running local driver install (`--driver-path` + `--confirm-dl`)
